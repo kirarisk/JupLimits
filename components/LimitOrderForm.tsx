@@ -19,7 +19,6 @@ const POPULAR_TOKENS = [
   { mint: 'So11111111111111111111111111111111111111112', symbol: 'SOL', name: 'Solana', decimals: 9 },
   { mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', symbol: 'USDC', name: 'USD Coin', decimals: 6 },
   { mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', symbol: 'USDT', name: 'Tether USD', decimals: 6 },
-  { mint: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263', symbol: 'BONK', name: 'Bonk', decimals: 5 },
   { mint: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN', symbol: 'JUP', name: 'Jupiter', decimals: 6 },
 ]
 
@@ -27,15 +26,14 @@ export default function LimitOrderForm({ onOrderCreated }: LimitOrderFormProps) 
   const { publicKey, signTransaction } = useWallet()
   const { connection } = useConnection()
   
-  const [inputMint, setInputMint] = useState('So11111111111111111111111111111111111111112') // SOL
-  const [outputMint, setOutputMint] = useState('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v') // USDC
+  const [inputMint, setInputMint] = useState('So11111111111111111111111111111111111111112')
+  const [outputMint, setOutputMint] = useState('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')
   const [makingAmount, setMakingAmount] = useState('0.05')
-  const [price, setPrice] = useState('159.55')
+  const [price, setPrice] = useState('420.69')
   const [isCreatingOrder, setIsCreatingOrder] = useState(false)
   const [lastOrderId, setLastOrderId] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   
-  // Token selection state
   const [userHoldings, setUserHoldings] = useState<TokenHolding[]>([])
   const [isLoadingHoldings, setIsLoadingHoldings] = useState(false)
   const [showCustomInputMint, setShowCustomInputMint] = useState(false)
@@ -43,18 +41,15 @@ export default function LimitOrderForm({ onOrderCreated }: LimitOrderFormProps) 
   const [customInputMint, setCustomInputMint] = useState('')
   const [customOutputMint, setCustomOutputMint] = useState('')
 
-  // Fetch user's token holdings
   const fetchUserHoldings = async () => {
     if (!publicKey) return
 
     setIsLoadingHoldings(true)
     try {
-      // Get token accounts
       const tokenAccounts = await connection.getTokenAccountsByOwner(publicKey, {
         programId: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')
       })
 
-      // Get SOL balance
       const solBalance = await connection.getBalance(publicKey)
       
       const holdings: TokenHolding[] = [
@@ -64,14 +59,12 @@ export default function LimitOrderForm({ onOrderCreated }: LimitOrderFormProps) 
           symbol: 'SOL',
           decimals: 9,
           balance: solBalance,
-          uiAmount: solBalance / 1e9
+          uiAmount: solBalance
         }
       ]
 
-      // Process token accounts
       for (const account of tokenAccounts.value) {
         try {
-          // Get the parsed account info which includes the mint
           const parsedAccountInfo = await connection.getParsedAccountInfo(account.pubkey)
           
           if (parsedAccountInfo.value?.data && 'parsed' in parsedAccountInfo.value.data) {
@@ -79,9 +72,7 @@ export default function LimitOrderForm({ onOrderCreated }: LimitOrderFormProps) 
             const mintStr = tokenAccountData.mint
             const balance = tokenAccountData.tokenAmount
             
-            // Only include accounts with positive balances
             if (balance.uiAmount && balance.uiAmount > 0) {
-              // Try to find token info from popular tokens
               const popularToken = POPULAR_TOKENS.find(t => t.mint === mintStr)
               
               holdings.push({
@@ -96,7 +87,6 @@ export default function LimitOrderForm({ onOrderCreated }: LimitOrderFormProps) 
           }
         } catch (e) {
           console.warn('Failed to parse token account:', account.pubkey.toString(), e)
-          // Skip failed token accounts
         }
       }
 
@@ -154,7 +144,7 @@ export default function LimitOrderForm({ onOrderCreated }: LimitOrderFormProps) 
 
   const handleCustomInputMintSubmit = () => {
     try {
-      new PublicKey(customInputMint) // Validate mint address
+      new PublicKey(customInputMint)
       setInputMint(customInputMint)
       setShowCustomInputMint(false)
     } catch (e) {
@@ -164,7 +154,7 @@ export default function LimitOrderForm({ onOrderCreated }: LimitOrderFormProps) 
 
   const handleCustomOutputMintSubmit = () => {
     try {
-      new PublicKey(customOutputMint) // Validate mint address
+      new PublicKey(customOutputMint)
       setOutputMint(customOutputMint)
       setShowCustomOutputMint(false)
     } catch (e) {
@@ -193,10 +183,6 @@ export default function LimitOrderForm({ onOrderCreated }: LimitOrderFormProps) 
       const makingAmountLamports = Math.floor(parseFloat(makingAmount) * Math.pow(10, inputInfo.decimals)).toString()
       const takingAmountUnits = Math.floor(parseFloat(calculateTakingAmount()) * Math.pow(10, outputInfo.decimals)).toString()
 
-      console.log(`Creating order: ${makingAmount} ${inputInfo.symbol} (${makingAmountLamports} units) for ${calculateTakingAmount()} ${outputInfo.symbol} (${takingAmountUnits} units)`)
-
-      // Step 1: Get transaction from Jupiter API
-      console.log('Calling Jupiter API to create order...')
       const createOrderResponse = await fetch("https://api.jup.ag/limit/v2/createOrder", {
         method: "POST",
         headers: {
@@ -222,18 +208,12 @@ export default function LimitOrderForm({ onOrderCreated }: LimitOrderFormProps) 
       }
 
       const jupiterResult = await createOrderResponse.json()
-      console.log("Jupiter API response received, order:", jupiterResult.order)
 
-      // Step 2: Deserialize transaction and sign with user's wallet
       const txBuffer = Buffer.from(jupiterResult.tx, "base64")
       const versionedTx = VersionedTransaction.deserialize(new Uint8Array(txBuffer))
       
-      console.log('Requesting wallet signature...')
       const signedTx = await signTransaction(versionedTx)
-      console.log('Transaction signed by user wallet')
 
-      // Step 3: Send transaction through Jito bundling (mandatory)
-      console.log('Sending signed transaction through Jito bundling...')
       const jitoResponse = await fetch('/api/submit-jito-bundle', {
         method: 'POST',
         headers: {
@@ -243,7 +223,7 @@ export default function LimitOrderForm({ onOrderCreated }: LimitOrderFormProps) 
           signedTransaction: Buffer.from(signedTx.serialize()).toString('base64'),
           orderId: jupiterResult.order,
           makingAmount: parseInt(makingAmountLamports),
-          inputMint: inputMint // Pass input mint for fee calculation
+          inputMint: inputMint
         }),
       })
 
@@ -253,26 +233,14 @@ export default function LimitOrderForm({ onOrderCreated }: LimitOrderFormProps) 
       }
 
       const jitoResult = await jitoResponse.json()
-      console.log('Jito bundle submitted successfully:', jitoResult)
 
-      // Log bundle ID prominently
-      if (jitoResult.bundleId) {
-        console.log('🎉 ORDER CREATION BUNDLED!')
-        console.log('📦 Bundle ID:', jitoResult.bundleId)
-        console.log('🆔 Order ID:', jupiterResult.order)
-        console.log('🔗 Transaction Signature:', jitoResult.signature)
-      }
-
-      // Success!
       setLastOrderId(jupiterResult.order)
       onOrderCreated?.(jupiterResult.order)
       
-      // Reset form
       setMakingAmount('')
       setPrice('')
 
     } catch (error: any) {
-      console.error('Error creating order:', error)
       setErrorMessage(error.message || 'Failed to create order')
     } finally {
       setIsCreatingOrder(false)
@@ -293,7 +261,6 @@ export default function LimitOrderForm({ onOrderCreated }: LimitOrderFormProps) 
       )}
 
       <div className="space-y-4">
-        {/* Input Token Selection */}
         <div>
           <label className="block text-sm font-medium mb-2">Sell Token</label>
           <select
@@ -342,7 +309,6 @@ export default function LimitOrderForm({ onOrderCreated }: LimitOrderFormProps) 
           </div>
         </div>
 
-        {/* Output Token Selection */}
         <div>
           <label className="block text-sm font-medium mb-2">Buy Token</label>
           <select
@@ -380,7 +346,6 @@ export default function LimitOrderForm({ onOrderCreated }: LimitOrderFormProps) 
           )}
         </div>
 
-        {/* Amount Input */}
         <div>
           <label className="block text-sm font-medium mb-2">
             Sell Amount ({inputTokenInfo.symbol})
@@ -396,7 +361,6 @@ export default function LimitOrderForm({ onOrderCreated }: LimitOrderFormProps) 
           />
         </div>
 
-        {/* Price Input */}
         <div>
           <label className="block text-sm font-medium mb-2">
             Limit Price - Sell at ({outputTokenInfo.symbol} per {inputTokenInfo.symbol})
@@ -412,7 +376,6 @@ export default function LimitOrderForm({ onOrderCreated }: LimitOrderFormProps) 
           />
         </div>
 
-        {/* Order Summary */}
         <div className="bg-gray-700 rounded-lg p-4">
           <div className="text-sm text-gray-300 mb-2">Order Summary:</div>
           <div className="text-sm">

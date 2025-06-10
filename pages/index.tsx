@@ -10,18 +10,11 @@ export default function Home() {
   const orderManagementRef = useRef<{ refreshOrders: () => void } | null>(null)
 
   const handleOrderCreated = (orderId: string) => {
-    setRecentOrders(prev => [orderId, ...prev.slice(0, 4)]) // Keep last 5 orders
-    
-    // Refresh orders list after creation
-    if (orderManagementRef.current) {
-      setTimeout(() => {
-        orderManagementRef.current?.refreshOrders()
-      }, 3000) // Give it 3 seconds for the order to appear on Jupiter's API
-    }
+    setRecentOrders(prev => [orderId, ...prev.slice(0, 4)])
   }
 
   const handleOrderCancelled = (orderIds: string[]) => {
-    setCancelledOrders(prev => [...orderIds, ...prev.slice(0, 10)]) // Keep last 10 cancelled orders
+    setCancelledOrders(prev => [...orderIds, ...prev.slice(0, 10)])
   }
 
   return (
@@ -47,18 +40,15 @@ export default function Home() {
           <WalletConnection />
 
           <div className="grid lg:grid-cols-3 gap-8">
-            {/* Order Creation */}
             <div className="lg:col-span-1">
               <LimitOrderForm onOrderCreated={handleOrderCreated} />
             </div>
 
-            {/* Order Management */}
             <div className="lg:col-span-2">
               <OrderManagement onOrderCancelled={handleOrderCancelled} ref={orderManagementRef} />
             </div>
           </div>
 
-          {/* Info Section */}
           <div className="grid md:grid-cols-3 gap-6 mt-8">
             {recentOrders.length > 0 && (
               <div className="card">
@@ -87,8 +77,6 @@ export default function Home() {
                 </div>
               </div>
             )}
-
-
 
           </div>
         </div>

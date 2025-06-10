@@ -6,13 +6,11 @@ export default function WalletConnection() {
   const { wallet, publicKey, connected } = useWallet()
   const [mounted, setMounted] = useState(false)
 
-  // Ensure this component only renders on the client side
   useEffect(() => {
     setMounted(true)
   }, [])
 
   if (!mounted) {
-    // Return a placeholder that matches the server-side render
     return (
       <div className="flex items-center justify-between p-4 bg-gray-800 rounded-lg mb-6">
         <div className="flex items-center space-x-4">

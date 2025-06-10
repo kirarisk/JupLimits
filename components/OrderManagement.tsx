@@ -51,7 +51,6 @@ const OrderManagement = forwardRef<OrderManagementRef, OrderManagementProps>(
       setOrders(data.orders || [])
       
     } catch (error: any) {
-      console.error('Error fetching orders:', error)
       setErrorMessage(error.message || 'Failed to fetch orders')
     } finally {
       setIsLoading(false)
@@ -59,8 +58,6 @@ const OrderManagement = forwardRef<OrderManagementRef, OrderManagementProps>(
   }
 
   const pollForOrderCancellation = async (orderIdsToCheck: string[]) => {
-    console.log('🔄 Starting to poll for order cancellation...', orderIdsToCheck)
-    
     const checkOrders = async (): Promise<boolean> => {
       try {
         const response = await fetch(`/api/open-orders?wallet=${publicKey!.toString()}`)
@@ -69,30 +66,24 @@ const OrderManagement = forwardRef<OrderManagementRef, OrderManagementProps>(
         const data = await response.json()
         const currentOrderIds = (data.orders || []).map((order: JupiterOrder) => order.publicKey)
         
-        // Check if all cancelled orders are no longer in the list
         const stillExists = orderIdsToCheck.some(orderId => currentOrderIds.includes(orderId))
         
         if (!stillExists) {
-          console.log('✅ All orders confirmed cancelled on-chain')
-          return true // All orders have been cancelled
+          return true
         }
         
-        console.log('⏳ Orders still exist on-chain, continuing to poll...')
         return false
       } catch (error) {
-        console.error('Error polling orders:', error)
         return false
       }
     }
 
-    // Poll every 2 seconds for up to 60 seconds
     const maxAttempts = 30
     let attempts = 0
     
     while (attempts < maxAttempts) {
       const cancelled = await checkOrders()
       if (cancelled) {
-        // Update the orders list and exit loading state
         await fetchOpenOrders()
         setIsCancellingInProgress(false)
         setCancellingOrderIds([])
@@ -101,17 +92,14 @@ const OrderManagement = forwardRef<OrderManagementRef, OrderManagementProps>(
       }
       
       attempts++
-      await new Promise(resolve => setTimeout(resolve, 2000)) // Wait 2 seconds
+      await new Promise(resolve => setTimeout(resolve, 2000))
     }
     
-    // Timeout reached - force refresh and exit loading state
-    console.log('⚠️ Polling timeout reached, forcing refresh')
     await fetchOpenOrders()
     setIsCancellingInProgress(false)
     setCancellingOrderIds([])
   }
 
-  // Expose refreshOrders to parent components
   useImperativeHandle(ref, () => ({
     refreshOrders: fetchOpenOrders
   }), [])
@@ -154,9 +142,6 @@ const OrderManagement = forwardRef<OrderManagementRef, OrderManagementProps>(
     setErrorMessage(null)
 
     try {
-      console.log('Canceling single order:', orderPublicKey)
-
-      // Call Jupiter API to cancel specific order
       const cancelResponse = await fetch("https://api.jup.ag/limit/v2/cancelOrders", {
         method: "POST",
         headers: {
@@ -164,7 +149,7 @@ const OrderManagement = forwardRef<OrderManagementRef, OrderManagementProps>(
         },
         body: JSON.stringify({
           maker: publicKey.toString(),
-          orders: [orderPublicKey], // Cancel specific order
+          orders: [orderPublicKey],
           computeUnitPrice: "auto",
         }),
       })
@@ -175,25 +160,20 @@ const OrderManagement = forwardRef<OrderManagementRef, OrderManagementProps>(
       }
 
       const result = await cancelResponse.json()
-      console.log(`Received ${result.txs.length} cancel transactions`)
 
       if (result.txs.length === 0) {
         throw new Error('No transactions returned from Jupiter API')
       }
 
-      // Sign all transactions
       const signedTransactions: string[] = []
       for (const txBase64 of result.txs) {
         const txBuffer = Buffer.from(txBase64, "base64")
         const tx = VersionedTransaction.deserialize(new Uint8Array(txBuffer))
         
-        console.log('Requesting wallet signature for cancel transaction...')
         const signedTx = await signTransaction(tx)
         signedTransactions.push(Buffer.from(signedTx.serialize()).toString('base64'))
       }
 
-      // Submit transactions through Jito bundling (mandatory)
-      console.log('Submitting cancel transactions through Jito bundling...')
       const jitoResponse = await fetch('/api/submit-cancel-bundle', {
         method: 'POST',
         headers: {
@@ -211,13 +191,10 @@ const OrderManagement = forwardRef<OrderManagementRef, OrderManagementProps>(
       }
 
       const jitoResult = await jitoResponse.json()
-      console.log('Cancel transaction bundle submitted successfully')
 
-      // Start polling for cancellation confirmation
       pollForOrderCancellation([orderPublicKey])
 
     } catch (error: any) {
-      console.error('Error canceling order:', error)
       setErrorMessage(error.message || 'Failed to cancel order')
       setIsCancellingInProgress(false)
       setCancellingOrderIds([])
@@ -241,9 +218,6 @@ const OrderManagement = forwardRef<OrderManagementRef, OrderManagementProps>(
     setErrorMessage(null)
 
     try {
-      console.log('Canceling all orders...')
-
-      // Call Jupiter API to cancel all orders
       const cancelResponse = await fetch("https://api.jup.ag/limit/v2/cancelOrders", {
         method: "POST",
         headers: {
@@ -252,7 +226,6 @@ const OrderManagement = forwardRef<OrderManagementRef, OrderManagementProps>(
         body: JSON.stringify({
           maker: publicKey.toString(),
           computeUnitPrice: "auto",
-          // Not specifying orders array means cancel ALL orders
         }),
       })
 
@@ -262,25 +235,20 @@ const OrderManagement = forwardRef<OrderManagementRef, OrderManagementProps>(
       }
 
       const result = await cancelResponse.json()
-      console.log(`Received ${result.txs.length} cancel transactions`)
 
       if (result.txs.length === 0) {
         throw new Error('No transactions returned from Jupiter API')
       }
 
-      // Sign all transactions
       const signedTransactions: string[] = []
       for (const txBase64 of result.txs) {
         const txBuffer = Buffer.from(txBase64, "base64")
         const tx = VersionedTransaction.deserialize(new Uint8Array(txBuffer))
         
-        console.log('Requesting wallet signature for cancel transaction...')
         const signedTx = await signTransaction(tx)
         signedTransactions.push(Buffer.from(signedTx.serialize()).toString('base64'))
       }
 
-      // Submit transactions through Jito bundling (mandatory)
-      console.log('Submitting cancel transactions through Jito bundling...')
       const jitoResponse = await fetch('/api/submit-cancel-bundle', {
         method: 'POST',
         headers: {
@@ -298,21 +266,10 @@ const OrderManagement = forwardRef<OrderManagementRef, OrderManagementProps>(
       }
 
       const jitoResult = await jitoResponse.json()
-      console.log('Cancel transaction bundle submitted successfully')
 
-      // Log bundle ID prominently
-      if (jitoResult.bundleId) {
-        console.log('🎉 ALL ORDERS CANCELLATION BUNDLED!')
-        console.log('📦 Bundle ID:', jitoResult.bundleId)
-        console.log('🔄 Cancelled Orders:', allOrderIds)
-        console.log('🔗 Transaction Signatures:', jitoResult.signatures)
-      }
-
-      // Start polling for cancellation confirmation
       pollForOrderCancellation(allOrderIds)
 
     } catch (error: any) {
-      console.error('Error canceling all orders:', error)
       setErrorMessage(error.message || 'Failed to cancel all orders')
       setIsCancellingInProgress(false)
       setCancellingOrderIds([])
@@ -332,7 +289,6 @@ const OrderManagement = forwardRef<OrderManagementRef, OrderManagementProps>(
 
   return (
     <div className="card relative">
-      {/* Loading overlay when cancelling orders */}
       {isCancellingInProgress && (
         <div className="absolute inset-0 bg-gray-900 bg-opacity-75 rounded-lg flex items-center justify-center z-10">
           <div className="text-center">

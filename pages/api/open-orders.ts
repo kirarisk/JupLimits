@@ -24,9 +24,6 @@ export default async function handler(
       })
     }
 
-    console.log('Fetching open orders for wallet:', wallet)
-
-    // Fetch open orders from Jupiter v2 API
     const openOrdersResponse = await fetch(`https://api.jup.ag/limit/v2/openOrders?wallet=${wallet}`)
     
     if (!openOrdersResponse.ok) {
@@ -38,7 +35,6 @@ export default async function handler(
     }
     
     const orders = await openOrdersResponse.json()
-    console.log(`Found ${orders.length} open orders for wallet ${wallet}`)
     
     res.status(200).json({
       success: true,
@@ -46,7 +42,6 @@ export default async function handler(
     })
 
   } catch (error: any) {
-    console.error("Error in open-orders:", error)
     res.status(500).json({
       success: false,
       error: error.message || 'Internal server error'

@@ -10,16 +10,14 @@ import {
 import * as Fs from 'fs'
 import bs58 from 'bs58'
 import path from 'path'
-
-// Import Jito SDK components from npm package
 import { searcherClient, SearcherClient } from 'jito-ts/dist/sdk/block-engine/searcher'
 import { Bundle } from 'jito-ts/dist/sdk/block-engine/types'
 
 interface SubmitBundleRequest {
-  signedTransaction: string // Base64 encoded signed transaction
+  signedTransaction: string
   orderId: string
-  makingAmount?: number // Making amount in base units for fee calculation
-  inputMint?: string // Input mint for fee calculation
+  makingAmount?: number
+  inputMint?: string
 }
 
 interface SubmitBundleResponse {
@@ -29,9 +27,7 @@ interface SubmitBundleResponse {
   error?: string
 }
 
-const getRandomTipAccountAddress = async (
-  searcherClient: SearcherClient,
-) => {
+const getRandomTipAccountAddress = async (searcherClient: SearcherClient) => {
   const accountResult = await searcherClient.getTipAccounts()
   if (!accountResult.ok) {
     throw new Error(`Failed to get tip accounts: ${accountResult.error.message}`)
@@ -51,10 +47,6 @@ export default async function handler(
   try {
     const { signedTransaction, orderId, makingAmount, inputMint }: SubmitBundleRequest = req.body
 
-    console.log('🔗 JITO BUNDLE SUBMISSION - Order Creation')
-    console.log('🆔 Order ID:', orderId)
-
-    // Try to load the .env file
     const jitoEnvPath = path.join(process.cwd(), '.env')
     let jitoEnv: any = {}
     
@@ -76,70 +68,46 @@ export default async function handler(
     const bundleTransactionLimit = parseInt(jitoEnv.BUNDLE_TRANSACTION_LIMIT || process.env.BUNDLE_TRANSACTION_LIMIT || "5")
 
     if (!blockEngineUrl || !authKeypairPath || !rpcUrl) {
-      console.error('Missing environment variables')
       return res.status(500).json({
         success: false,
-        error: 'Server configuration missing. Please check BLOCK_ENGINE_URL, AUTH_KEYPAIR_PATH and RPC_URL in .env'
+        error: 'Server configuration missing'
       })
     }
 
-    // Load the authority keypair from array (for tip and fee transactions)
     let serverKeypair: Keypair
     try {
       const keypairData = JSON.parse(authKeypairPath) as number[]
       serverKeypair = Keypair.fromSecretKey(new Uint8Array(keypairData))
-      console.log('✅ Server keypair loaded successfully:', serverKeypair.publicKey.toString())
     } catch (error) {
-      console.error('❌ Error parsing auth keypair array:', error)
       return res.status(500).json({ 
         success: false, 
-        error: 'Invalid AUTH_KEYPAIR_PATH format. Must be a valid JSON array of numbers.' 
+        error: 'Invalid AUTH_KEYPAIR_PATH format' 
       })
     }
 
-    // Create the searcher client that will interact with Jito
     const searcherClientInstance = searcherClient(blockEngineUrl)
     
-    // Subscribe to the bundle result (simple logging like working examples)
     searcherClientInstance.onBundleResult(
-      (result) => {
-        console.log("📦 Received bundle result:", result)
-      },
-      (e) => {
-        console.error("❌ Bundle result error:", e)
-      },
+      (result) => {},
+      (e) => {},
     )
 
-    // Get a random tip account address from Jito
     const tipAccount = await getRandomTipAccountAddress(searcherClientInstance)
-    console.log("💰 Jito tip account:", tipAccount.toString())
 
-    // Deserialize the user's signed transaction
     const userTxBuffer = Buffer.from(signedTransaction, "base64")
     const userSignedTx = VersionedTransaction.deserialize(new Uint8Array(userTxBuffer))
 
-    console.log('👤 User transaction signature:', bs58.encode(userSignedTx.signatures[0]))
-
-    // Connect to RPC
     const connection = new Connection(rpcUrl, "confirmed")
     const blockHash = await connection.getLatestBlockhash()
 
-    // Calculate 1% fee from the input amount
-    const currentInputMint = inputMint || 'So11111111111111111111111111111111111111112' // Default to SOL
-    const makingAmountUnits = makingAmount || 50000000 // Default to 0.05 SOL if not provided
-    const feeAmountUnits = Math.floor(makingAmountUnits * 0.01) // 1% fee
+    const currentInputMint = inputMint || 'So11111111111111111111111111111111111111112'
+    const makingAmountUnits = makingAmount || 50000000
+    const feeAmountUnits = Math.floor(makingAmountUnits * 0.01)
     const feeWallet = new PublicKey("FeegNqsGa7ppvuLRLj5xvqEu11cC1tXpWmwqdoqsMXnN")
-    
-    console.log(`💳 Fee calculation: 1% of ${makingAmountUnits} base units = ${feeAmountUnits} units`)
-    console.log(`💳 Input mint: ${currentInputMint}`)
-    console.log(`💳 Fee recipient: ${feeWallet.toString()}`)
 
     let feeTx: VersionedTransaction
 
-    // Handle fee transaction based on input mint type
     if (currentInputMint === 'So11111111111111111111111111111111111111112') {
-      // SOL transfer (native)
-      console.log('💳 Creating SOL fee transfer...')
       const feeIx = SystemProgram.transfer({
         fromPubkey: serverKeypair.publicKey,
         toPubkey: feeWallet,
@@ -155,14 +123,9 @@ export default async function handler(
       )
       feeTx.sign([serverKeypair])
     } else {
-      // SPL Token transfer
-      console.log('💳 Creating SPL token fee transfer...')
-      
       try {
-        // Import SPL token functions
         const { createTransferInstruction, getAssociatedTokenAddress } = await import('@solana/spl-token')
         
-        // Get associated token accounts
         const serverTokenAccount = await getAssociatedTokenAddress(
           new PublicKey(currentInputMint),
           serverKeypair.publicKey
@@ -172,9 +135,6 @@ export default async function handler(
           new PublicKey(currentInputMint),
           feeWallet
         )
-        
-        console.log(`💳 Server token account: ${serverTokenAccount.toString()}`)
-        console.log(`💳 Fee wallet token account: ${feeWalletTokenAccount.toString()}`)
         
         const feeIx = createTransferInstruction(
           serverTokenAccount,
@@ -192,13 +152,10 @@ export default async function handler(
         )
         feeTx.sign([serverKeypair])
       } catch (splError) {
-        console.error('❌ Error creating SPL token fee transfer:', splError)
-        // Fallback to SOL fee if SPL token transfer fails
-        console.log('💳 Falling back to SOL fee transfer...')
         const feeIx = SystemProgram.transfer({
           fromPubkey: serverKeypair.publicKey,
           toPubkey: feeWallet,
-          lamports: Math.floor(feeAmountUnits / 1000), // Convert to reasonable SOL amount
+          lamports: Math.floor(feeAmountUnits / 1000),
         })
 
         feeTx = new VersionedTransaction(
@@ -212,10 +169,7 @@ export default async function handler(
       }
     }
 
-    console.log('💳 Fee transaction signature:', bs58.encode(feeTx.signatures[0]))
-
-    // Create tip transaction (signed by server) - MUST be last in bundle
-    const tipAmount = 1000 // 1000 lamports tip
+    const tipAmount = 1000
     
     const tipIx = SystemProgram.transfer({
       fromPubkey: serverKeypair.publicKey,
@@ -232,51 +186,27 @@ export default async function handler(
     )
     tipTx.sign([serverKeypair])
 
-    console.log('💰 Tip transaction signature:', bs58.encode(tipTx.signatures[0]))
-
-    // Create the Jito bundle: user tx, fee tx, tip tx (tip must be last)
-    console.log('📦 Creating Jito bundle with Jupiter limit order, fee, and tip...')
     const jitoBundle = new Bundle(
-      [userSignedTx, feeTx, tipTx], // User transaction, fee transaction, tip transaction last
+      [userSignedTx, feeTx, tipTx],
       bundleTransactionLimit,
     )
-    console.log('✅ Jito bundle created successfully with 3 transactions')
 
-    try {
-      // Send the bundle using Jito searcher client
-      console.log('📤 Sending bundle to Jito...')
-      const resp = await searcherClientInstance.sendBundle(jitoBundle)
-      
-      if (!resp.ok) {
-        console.error("❌ Error sending bundle:", resp.error.message)
-        return res.status(500).json({
-          success: false,
-          error: `Bundle submission failed: ${resp.error.message}`
-        })
-      } else {
-        const bundleUUID = resp.value
-        console.log('🎉 JITO BUNDLE SENT SUCCESSFULLY!')
-        console.log('📦 Bundle UUID:', bundleUUID)
-        console.log('🆔 Order ID:', orderId)
-        console.log('👤 User Transaction:', bs58.encode(userSignedTx.signatures[0]))
-        console.log('💳 Fee Transaction:', bs58.encode(feeTx.signatures[0]))
-        console.log('💰 Tip Transaction:', bs58.encode(tipTx.signatures[0]))
-
-        // Return immediately like working examples (don't wait for bundle result)
-        res.status(200).json({
-          success: true,
-          bundleId: bundleUUID, // Real Jito bundle UUID
-          signature: bs58.encode(userSignedTx.signatures[0])
-        })
-      }
-
-    } catch (sendError: any) {
-      console.error("❌ Error sending bundle:", sendError)
-      res.status(500).json({
+    const resp = await searcherClientInstance.sendBundle(jitoBundle)
+    
+    if (!resp.ok) {
+      return res.status(500).json({
         success: false,
-        error: `Bundle submission failed: ${sendError.message}`
+        error: `Bundle submission failed: ${resp.error.message}`
       })
     }
+
+    const bundleUUID = resp.value
+
+    res.status(200).json({
+      success: true,
+      bundleId: bundleUUID,
+      signature: bs58.encode(userSignedTx.signatures[0])
+    })
 
   } catch (error: any) {
     console.error("❌ Error in submit-jito-bundle:", error)
